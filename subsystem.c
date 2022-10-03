@@ -70,10 +70,6 @@ int main() {
         perror("bind manager sd");
         exit(1);
     }
-    // non-blocking connection
-    // do not wait for receive heartbeat requests
-    int val = 1;
-    ioctl(manager_recv_sd, FIONBIO, &val);
 
     if (bind(controller_recv_sd, (struct sockaddr *)&controller_recv_addr, sizeof(controller_recv_addr)) < 0) {
         perror("bind controller sd");
