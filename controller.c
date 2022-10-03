@@ -40,7 +40,7 @@ int main() {
         exit(1);
     }
 
-    if (bind(recv_sd, &recv_addr, sizeof(recv_addr)) < 0) {
+    if (bind(recv_sd, (struct sockaddr *)&recv_addr, sizeof(recv_addr)) < 0) {
         perror("bind");
         exit(1);
     }
