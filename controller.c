@@ -56,7 +56,7 @@ int main() {
             perror("recv");
             exit(1);
         }
-	printf("received: %s\n", msg);
+        printf("received: %s\n", msg);
         // send information
         if (send(send_sd, msg, strlen(msg), 0) < 0) {
             perror("send");
