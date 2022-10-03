@@ -7,7 +7,7 @@
 
 #define BUF_SIZE 256
 #define DEST_ADDR "192.168.100.2"
-#define DEST_PORT 22222
+#define DEST_PORT 22223
 #define RECV_ADDR "192.168.100.1"
 #define RECV_PORT 22225
 
@@ -56,6 +56,7 @@ int main() {
             perror("recv");
             exit(1);
         }
+	printf("received: %s\n", msg);
         // send information
         if (send(send_sd, msg, strlen(msg), 0) < 0) {
             perror("send");

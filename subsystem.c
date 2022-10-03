@@ -70,18 +70,19 @@ int main() {
         perror("bind manager sd");
         exit(1);
     }
-    // non-blocking connection
-    // do not wait for receive heartbeat requests
-    int val = 1;
-    ioctl(manager_recv_sd, FIONBIO, &val);
 
     if (bind(controller_recv_sd, (struct sockaddr *)&controller_recv_addr, sizeof(controller_recv_addr)) < 0) {
         perror("bind controller sd");
         exit(1);
     }
 
-    if (connect(manager_send_sd, (struct sockaddr *)&manager_recv_addr, sizeof(manager_recv_addr)) < 0) {
+    if (connect(manager_send_sd, (struct sockaddr *)&manager_send_addr, sizeof(manager_send_addr)) < 0) {
         perror("connect");
+        exit(1);
+    }
+    
+    if (connect(controller_send_sd, (struct sockaddr *)&controller_send_addr, sizeof(controller_send_addr)) < 0) {
+        perror("connect controller");
         exit(1);
     }
 
@@ -89,14 +90,11 @@ int main() {
     int controller_msg_len, manager_msg_len;
     while (1) {
         // receive request from manager
-        if ((manager_msg_len = recv(manager_recv_sd, manager_buf, BUF_SIZE, 0)) < 0 && errno != EAGAIN) {
+        if (recv(manager_recv_sd, manager_buf, BUF_SIZE, 0) < 0) {
             perror("recv manager message");
             exit(1);
         }
-        // request not coming
-        else if (manager_msg_len < 0) {
-            continue;
-        }
+	printf("manager: %s\n", manager_buf);
         // when received
         // send request to the controller
         if (send(controller_send_sd, "Hello", 6, 0) < 0) {
@@ -108,6 +106,7 @@ int main() {
             perror("recv controller message");
             exit(1);
         }
+	printf("controller: %s\n", controller_buf);
         generate_msg(controller_buf, manager_buf);
         // send information to the manager
         if (send(manager_send_sd, manager_buf, strlen(manager_buf), 0) < 0) {
