@@ -69,7 +69,7 @@ void message_gen(char *msg, int kmem_fd, off_t *addr) {
     old_time = now_time;
     old_write_nsec = write_nsec;
 
-    memcpy(msg, &write_nsec, MSG_LEN);
+    memcpy(msg, &diff_write_nsec, MSG_LEN);
 }
 
 int main() {
