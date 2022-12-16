@@ -8,18 +8,19 @@
 #include <unistd.h>
 
 #define BUF_SIZE 256
-#define MANAGER_ADDR "192.168.23.99"
+#define MSG_LEN 8
+#define MANAGER_ADDR "10.0.1.1"
 #define MANAGER_PORT 22224
-#define MANAGER_RECV_ADDR "192.168.23.124"
+#define MANAGER_RECV_ADDR "10.0.1.2"
 #define MANAGER_RECV_PORT 22222
-#define CONTROLLER_RECV_ADDR "192.168.100.2"
+#define CONTROLLER_RECV_ADDR "10.0.1.3"
 #define CONTROLLER_RECV_PORT 22223
-#define CONTROLLER_ADDR "192.168.100.1"
+#define CONTROLLER_ADDR "10.0.1.4"
 #define CONTROLLER_PORT 22225
 
 // controllerからの情報を基に、managerへのメッセージを生成する
 void generate_msg(const char *controller_msg, char *manager_msg) {
-    strcpy(manager_msg, controller_msg);
+    memcpy(manager_msg, controller_msg, MSG_LEN);
 }
 
 int main() {
@@ -80,7 +81,7 @@ int main() {
         perror("connect");
         exit(1);
     }
-    
+
     if (connect(controller_send_sd, (struct sockaddr *)&controller_send_addr, sizeof(controller_send_addr)) < 0) {
         perror("connect controller");
         exit(1);
@@ -94,7 +95,7 @@ int main() {
             perror("recv manager message");
             exit(1);
         }
-	printf("manager: %s\n", manager_buf);
+        printf("manager: %s\n", manager_buf);
         // when received
         // send request to the controller
         if (send(controller_send_sd, "Hello", 6, 0) < 0) {
@@ -106,10 +107,10 @@ int main() {
             perror("recv controller message");
             exit(1);
         }
-	printf("controller: %s\n", controller_buf);
+        printf("controller: %s\n", controller_buf);
         generate_msg(controller_buf, manager_buf);
         // send information to the manager
-        if (send(manager_send_sd, manager_buf, strlen(manager_buf), 0) < 0) {
+        if (send(manager_send_sd, manager_buf, MSG_LEN, 0) < 0) {
             perror("send manager message");
             exit(1);
         }
