@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     struct timespec send_time, recv_time, interval = {.tv_sec = 0, .tv_nsec = 5000000};
     FILE *fp = fopen(argv[1], "w");
     uint64_t val;
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 10000; ++i) {
         nanosleep(&interval, NULL);
         timespec_get(&send_time, TIME_UTC);
         if (send(send_sd, "Hello", 6, 0) < 0) {
@@ -66,8 +66,8 @@ int main(int argc, char **argv) {
             exit(1);
         }
         timespec_get(&recv_time, TIME_UTC);
-        printf("%ld.%ld,%ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
-        fprintf(fp, "%ld.%ld,%ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
+        printf("%ld.%ld,%09ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
+        fprintf(fp, "%ld.%09ld,%ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
     }
 
     close(send_sd);

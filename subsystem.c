@@ -13,9 +13,9 @@
 #define MANAGER_PORT 22224
 #define MANAGER_RECV_ADDR "10.0.1.2"
 #define MANAGER_RECV_PORT 22222
-#define CONTROLLER_RECV_ADDR "10.0.1.3"
+#define CONTROLLER_RECV_ADDR "10.0.2.1"
 #define CONTROLLER_RECV_PORT 22223
-#define CONTROLLER_ADDR "10.0.1.4"
+#define CONTROLLER_ADDR "10.0.2.2"
 #define CONTROLLER_PORT 22225
 
 // controllerからの情報を基に、managerへのメッセージを生成する

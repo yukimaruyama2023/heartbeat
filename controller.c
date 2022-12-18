@@ -11,9 +11,9 @@
 
 #define BUF_SIZE 256
 #define MSG_LEN 8
-#define DEST_ADDR "10.0.1.3"
+#define DEST_ADDR "10.0.2.1"
 #define DEST_PORT 22223
-#define RECV_ADDR "10.0.1.4"
+#define RECV_ADDR "10.0.2.2"
 #define RECV_PORT 22225
 #define NCPUS 12
 
@@ -43,7 +43,7 @@ uint64_t read_cpuinfo(int kmem_fd, off_t *addr) {
             fprintf(stderr, "n is %ld, not 8 (i = %d)\n", n, i);
             exit(1);
         }
-        printf("val[%d] = %lu\n", i, val);
+        // printf("val[%d] = %lu\n", i, val);
         write_nsec += val;
     }
     return write_nsec;
@@ -75,7 +75,7 @@ void message_gen(char *msg, int kmem_fd, off_t *addr) {
 int main() {
     struct sockaddr_in send_addr, recv_addr;
     int send_sd, recv_sd, kmem_fd;
-    char msg[BUF_SIZE];
+    char msg[BUF_SIZE], buf[BUF_SIZE];
     off_t cpuinfo_addr[NCPUS];
 
     memset(&send_addr, 0, sizeof(send_addr));
@@ -121,7 +121,7 @@ int main() {
     while (1) {
         message_gen(msg, kmem_fd, cpuinfo_addr);
         // wait for the request
-        if (recv(recv_sd, msg, BUF_SIZE, 0) < 0) {
+        if (recv(recv_sd, buf, BUF_SIZE, 0) < 0) {
             if (errno == EAGAIN) continue;
             perror("recv");
             exit(1);
