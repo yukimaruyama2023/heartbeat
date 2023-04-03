@@ -7,9 +7,9 @@
 #include <unistd.h>
 
 #define BUF_SIZE 256
-#define DEST_ADDR "10.0.1.2"
+#define DEST_ADDR "192.168.23.99"
 #define DEST_PORT 22222
-#define RECV_ADDR "10.0.1.1"
+#define RECV_ADDR "192.168.23.99"
 #define RECV_PORT 22224
 
 int main(int argc, char **argv) {
@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
         timespec_get(&recv_time, TIME_UTC);
-        printf("%ld.%ld,%09ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
+        printf("%ld.%ld,%09ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
         fprintf(fp, "%ld.%09ld,%ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
     }
 

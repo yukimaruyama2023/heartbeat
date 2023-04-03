@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,11 +12,11 @@
 
 #define BUF_SIZE 256
 #define MSG_LEN 8
-#define DEST_ADDR "10.0.2.1"
-#define DEST_PORT 22223
-#define RECV_ADDR "10.0.2.2"
-#define RECV_PORT 22225
-#define NCPUS 12
+#define DEST_ADDR "192.168.23.223"
+#define DEST_PORT 22224
+#define RECV_ADDR "192.168.23.99"
+#define RECV_PORT 22222
+#define NCPUS 6
 
 void read_addr(const char *filename, off_t *addr) {
     FILE *fp = fopen(filename, "r");
@@ -61,14 +62,15 @@ void message_gen(char *msg, int kmem_fd, off_t *addr) {
 
     timespec_get(&now_time, TIME_UTC);
     uint64_t write_nsec = read_cpuinfo(kmem_fd, addr);
-    long diff_time = (now_time.tv_sec - old_time.tv_nsec) * 1000000 + now_time.tv_nsec - old_time.tv_nsec;
+    long diff_time = (now_time.tv_sec - old_time.tv_sec) * 1000000000 + now_time.tv_nsec - old_time.tv_nsec;
     long diff_write_nsec = write_nsec - old_write_nsec;
 
-    // double ret = diff_write_nsec / diff_time
+    // double ret = 1.0 * diff_write_nsec / diff_time;
 
     old_time = now_time;
     old_write_nsec = write_nsec;
 
+    // printf("%ld / %ld\n", diff_write_nsec , diff_time);
     memcpy(msg, &diff_write_nsec, MSG_LEN);
 }
 
@@ -77,6 +79,11 @@ int main() {
     int send_sd, recv_sd, kmem_fd;
     char msg[BUF_SIZE], buf[BUF_SIZE];
     off_t cpuinfo_addr[NCPUS];
+
+    // struct sched_param param;
+    // int policy = SCHED_FIFO;
+    // param.sched_priority = sched_get_priority_max(policy);
+    // sched_setscheduler(0, policy, &param);
 
     memset(&send_addr, 0, sizeof(send_addr));
     send_addr.sin_family = AF_INET;
@@ -126,7 +133,10 @@ int main() {
             perror("recv");
             exit(1);
         }
-        printf("received: %s\n", msg);
+        // double val;
+        // memcpy(&val, msg, 8);
+        //  printf("%lf\n", val);
+        //  printf("received: %s\n", msg);
         if (send(send_sd, msg, MSG_LEN, 0) < 0) {
             perror("send");
             exit(1);
