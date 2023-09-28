@@ -6,17 +6,40 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 
+#define USE_MMAP
+
+#ifdef USE_MMAP
+
+#define MEM_FILE "/dev/mem"
+#define FILENAME_DISKSTATS_ADDR "physical_address.txt"
+#define FILENAME_STAT_ADDR "stat_phys_addr.txt"
+
+#else
+
+#define MEM_FILE "/dev/kmem"
+#define FILENAME_DISKSTATS_ADDR "address.txt"
+#define FILENAME_STAT_ADDR "stat_addr.txt"
+
+#endif
+
 #define BUF_SIZE 256
-#define MSG_LEN 8
+#define MSG_LEN 88
 #define DEST_ADDR "192.168.23.223"
 #define DEST_PORT 22224
 #define RECV_ADDR "192.168.23.99"
 #define RECV_PORT 22222
 #define NCPUS 6
+#define NSTATS 10
+#define PAGE_MASK ~0xfff
+#define PAGE_SIZE 4096
+
+uint64_t *diskstat_pages[NCPUS];
+uint64_t *stat_pages[NCPUS];
 
 void read_addr(const char *filename, off_t *addr) {
     FILE *fp = fopen(filename, "r");
@@ -24,6 +47,25 @@ void read_addr(const char *filename, off_t *addr) {
         fscanf(fp, "%lx", &addr[i]);
     }
     fclose(fp);
+}
+
+void init_mmaps(int mem_fd, off_t *addr, uint64_t **pages_dst) {
+    for (int i = 0; i < NCPUS; ++i) {
+        pages_dst[i] = mmap(NULL, PAGE_SIZE, PROT_READ, MAP_PRIVATE, mem_fd, addr[i] & PAGE_MASK);
+        if (diskstat_pages[i] == (void *)-1) {
+            perror("mmap");
+            exit(1);
+        }
+
+        // printf("%p\n", diskstat_pages[i]);
+    }
+}
+
+void ummaps() {
+    for (int i = 0; i < NCPUS; ++i) {
+        munmap(diskstat_pages[i], PAGE_SIZE);
+        munmap(stat_pages[i], PAGE_SIZE);
+    }
 }
 
 uint64_t read_cpuinfo(int kmem_fd, off_t *addr) {
@@ -50,18 +92,41 @@ uint64_t read_cpuinfo(int kmem_fd, off_t *addr) {
     return write_nsec;
 }
 
-void message_gen(char *msg, int kmem_fd, off_t *addr) {
+uint64_t read_diskstat2(off_t *addr) {
+    uint64_t write_nsec = 0;
+    for (int i = 0; i < NCPUS; ++i) {
+        write_nsec += diskstat_pages[i][(addr[i] & ~PAGE_MASK) / sizeof(uint64_t)];
+    }
+    return write_nsec;
+}
+
+void read_stat2(off_t *addr, uint64_t *stats_dst) {
+    for (int i = 0; i < NSTATS; ++i) {
+        stats_dst[i] = 0;
+        for (int j = 0; j < NCPUS; ++j) {
+            stats_dst[i] += stat_pages[j][(addr[i] & ~PAGE_MASK) / sizeof(uint64_t) + i];
+        }
+    }
+}
+
+void message_gen(char *msg, int kmem_fd, off_t *addr_diskstats, off_t *addr_stat) {
     static uint64_t old_write_nsec = 0;
     static struct timespec old_time;
     struct timespec now_time;
 
     if (old_write_nsec == 0) {
         timespec_get(&old_time, TIME_UTC);
-        old_write_nsec = read_cpuinfo(kmem_fd, addr);
+        old_write_nsec = read_cpuinfo(kmem_fd, addr_diskstats);
     }
 
+    uint64_t cpu_stats[NSTATS];
     timespec_get(&now_time, TIME_UTC);
-    uint64_t write_nsec = read_cpuinfo(kmem_fd, addr);
+#ifdef USE_MMAP
+    uint64_t write_nsec = read_diskstat2(addr_diskstats);
+    read_stat2(addr_stat, cpu_stats);
+#else
+    uint64_t write_nsec = read_cpuinfo(kmem_fd, addr_diskstats);
+#endif
     long diff_time = (now_time.tv_sec - old_time.tv_sec) * 1000000000 + now_time.tv_nsec - old_time.tv_nsec;
     long diff_write_nsec = write_nsec - old_write_nsec;
 
@@ -70,15 +135,17 @@ void message_gen(char *msg, int kmem_fd, off_t *addr) {
     old_time = now_time;
     old_write_nsec = write_nsec;
 
-    // printf("%ld / %ld\n", diff_write_nsec , diff_time);
-    memcpy(msg, &diff_write_nsec, MSG_LEN);
+    // printf("%ld / %ld\n", write_nsec, diff_time);
+    memcpy(msg, &write_nsec, sizeof(write_nsec));
+    memcpy(msg + 8, cpu_stats, sizeof(cpu_stats));
 }
 
 int main() {
     struct sockaddr_in send_addr, recv_addr;
     int send_sd, recv_sd, kmem_fd;
     char msg[BUF_SIZE], buf[BUF_SIZE];
-    off_t cpuinfo_addr[NCPUS];
+    off_t diskstat_addr[NCPUS];
+    off_t stat_addr[NCPUS];
 
     // struct sched_param param;
     // int policy = SCHED_FIFO;
@@ -115,18 +182,22 @@ int main() {
         exit(1);
     }
 
-    kmem_fd = open("/dev/kmem", O_RDONLY);
+    kmem_fd = open(MEM_FILE, O_RDONLY);
     if (kmem_fd < 0) {
-        perror("open /dev/kmem");
+        perror("open" MEM_FILE);
         exit(1);
     }
-    read_addr("address.txt", cpuinfo_addr);
-
+    read_addr(FILENAME_DISKSTATS_ADDR, diskstat_addr);
+    read_addr(FILENAME_STAT_ADDR, stat_addr);
+#ifdef USE_MMAP
+    init_mmaps(kmem_fd, diskstat_addr, diskstat_pages);
+    init_mmaps(kmem_fd, stat_addr, stat_pages);
+#endif
     int val = 1;
     ioctl(recv_sd, FIONBIO, &val);
 
     while (1) {
-        message_gen(msg, kmem_fd, cpuinfo_addr);
+        message_gen(msg, kmem_fd, diskstat_addr, stat_addr);
         // wait for the request
         if (recv(recv_sd, buf, BUF_SIZE, 0) < 0) {
             if (errno == EAGAIN) continue;
@@ -142,7 +213,9 @@ int main() {
             exit(1);
         }
     }
-
+#ifdef USE_MMAP
+    ummaps();
+#endif
     close(recv_sd);
     close(send_sd);
     close(kmem_fd);
