@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sched.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,35 +12,17 @@
 #include <time.h>
 #include <unistd.h>
 
-#define USE_MMAP
-
-#ifdef USE_MMAP
+#include "monitor.h"
 
 #define MEM_FILE "/dev/mem"
-#define FILENAME_DISKSTATS_ADDR "physical_address.txt"
-#define FILENAME_STAT_ADDR "stat_phys_addr.txt"
-
-#else
-
-#define MEM_FILE "/dev/kmem"
-#define FILENAME_DISKSTATS_ADDR "address.txt"
-#define FILENAME_STAT_ADDR "stat_addr.txt"
-
-#endif
-
-#define BUF_SIZE 256
-#define MSG_LEN 88
 #define DEST_ADDR "192.168.23.223"
 #define DEST_PORT 22224
 #define RECV_ADDR "192.168.23.99"
 #define RECV_PORT 22222
 #define NCPUS 6
-#define NSTATS 10
-#define PAGE_MASK ~0xfff
-#define PAGE_SIZE 4096
-
-uint64_t *diskstat_pages[NCPUS];
-uint64_t *stat_pages[NCPUS];
+#define PERCPU_OFFSET 0x40000
+#define PAGE_SIZE 0x1000
+#define PAGE_MASK ~(PAGE_SIZE - 1)
 
 void read_addr(const char *filename, off_t *addr) {
     FILE *fp = fopen(filename, "r");
@@ -49,108 +32,79 @@ void read_addr(const char *filename, off_t *addr) {
     fclose(fp);
 }
 
-void init_mmaps(int mem_fd, off_t *addr, uint64_t **pages_dst) {
-    for (int i = 0; i < NCPUS; ++i) {
-        pages_dst[i] = mmap(NULL, PAGE_SIZE, PROT_READ, MAP_PRIVATE, mem_fd, addr[i] & PAGE_MASK);
-        if (diskstat_pages[i] == (void *)-1) {
-            perror("mmap");
-            exit(1);
-        }
+uint64_t statistics[NSTATS];
+uint64_t addr[NSTATS];
+void *mapped_addr[NSTATS][NCPUS];
+uint64_t metric[NSTATS];
+bool is_per_cpu[NSTATS] = {
+    [DISK_WRITE_NSEC] = true};
 
-        // printf("%p\n", diskstat_pages[i]);
+void read_metric(enum stat_id id) {
+    if (!is_per_cpu[id]) {
+        metric[id] = *(uint64_t *)mapped_addr[id][0];
+        return;
+    }
+
+    metric[id] = 0;
+    for (int i = 0; i < NCPUS; ++i) {
+        metric[id] += *(uint64_t *)mapped_addr[id][i];
     }
 }
 
-void ummaps() {
-    for (int i = 0; i < NCPUS; ++i) {
-        munmap(diskstat_pages[i], PAGE_SIZE);
-        munmap(stat_pages[i], PAGE_SIZE);
-    }
-}
-
-uint64_t read_cpuinfo(int kmem_fd, off_t *addr) {
-    uint64_t write_nsec = 0;
-    for (int i = 0; i < NCPUS; ++i) {
-        if (lseek(kmem_fd, addr[i], SEEK_SET) == (off_t)-1) {
-            perror("lseek");
-            exit(1);
-        }
-        uint64_t val;
-        ssize_t n;
-        n = read(kmem_fd, &val, 8);
-        if (n == (ssize_t)-1) {
-            perror("read");
-            exit(1);
-        }
-        if (n != 8) {
-            fprintf(stderr, "n is %ld, not 8 (i = %d)\n", n, i);
-            exit(1);
-        }
-        // printf("val[%d] = %lu\n", i, val);
-        write_nsec += val;
-    }
-    return write_nsec;
-}
-
-uint64_t read_diskstat2(off_t *addr) {
-    uint64_t write_nsec = 0;
-    for (int i = 0; i < NCPUS; ++i) {
-        write_nsec += diskstat_pages[i][(addr[i] & ~PAGE_MASK) / sizeof(uint64_t)];
-    }
-    return write_nsec;
-}
-
-void read_stat2(off_t *addr, uint64_t *stats_dst) {
+void message_gen(void) {
     for (int i = 0; i < NSTATS; ++i) {
-        stats_dst[i] = 0;
-        for (int j = 0; j < NCPUS; ++j) {
-            stats_dst[i] += stat_pages[j][(addr[i] & ~PAGE_MASK) / sizeof(uint64_t) + i];
+        read_metric(i);
+    }
+}
+
+void metric_mmap(int mem_fd, enum stat_id id) {
+    size_t size = is_per_cpu[id] ? NCPUS * PERCPU_OFFSET : PAGE_SIZE;
+    mapped_addr[id][0] = mmap(NULL, PAGE_SIZE, PROT_READ, MAP_PRIVATE, mem_fd, addr[id] & PAGE_MASK);
+    if (mapped_addr[id][0] == (void *)-1) {
+        perror("mmap");
+        exit(1);
+    }
+    mapped_addr[id][0] += addr[id] & ~PAGE_MASK;
+    if (is_per_cpu[id]) {
+        for (int i = 1; i < NCPUS; ++i) {
+            mapped_addr[id][i] = mapped_addr[id][0] + i * PERCPU_OFFSET;
         }
     }
 }
 
-void message_gen(char *msg, int kmem_fd, off_t *addr_diskstats, off_t *addr_stat) {
-    static uint64_t old_write_nsec = 0;
-    static struct timespec old_time;
-    struct timespec now_time;
+void metric_unmap(enum stat_id id) {
+    size_t size = is_per_cpu[id] ? NCPUS * PERCPU_OFFSET : PAGE_SIZE;
+    munmap((uint64_t)mapped_addr[id][0] & PAGE_MASK, size);
+}
 
-    if (old_write_nsec == 0) {
-        timespec_get(&old_time, TIME_UTC);
-        old_write_nsec = read_cpuinfo(kmem_fd, addr_diskstats);
+void read_addr_from_file(char *filename, enum stat_id first_id, enum stat_id last_id) {
+    FILE *fp = fopen(filename, "r");
+    for (int id = first_id; id <= last_id; ++id) {
+        fscanf(fp, "%lx", &addr[id]);
     }
+    fclose(fp);
+}
 
-    uint64_t cpu_stats[NSTATS];
-    timespec_get(&now_time, TIME_UTC);
-#ifdef USE_MMAP
-    uint64_t write_nsec = read_diskstat2(addr_diskstats);
-    read_stat2(addr_stat, cpu_stats);
-#else
-    uint64_t write_nsec = read_cpuinfo(kmem_fd, addr_diskstats);
-#endif
-    long diff_time = (now_time.tv_sec - old_time.tv_sec) * 1000000000 + now_time.tv_nsec - old_time.tv_nsec;
-    long diff_write_nsec = write_nsec - old_write_nsec;
+void init_metrics(int mem_fd) {
+    read_addr_from_file("addr_diskstat.txt", DISK_WRITE_NSEC, DISK_WRITE_NSEC);
+    read_addr_from_file("addr_cpustat.txt", CPUTIME_USER, CPUTIME_GUEST_NICE);
+    read_addr_from_file("addr_memstat.txt", MEM_USAGE, MEM_USAGE);
+    read_addr_from_file("addr_netstat.txt", NET_IP_IN_RECV, NET_IP_ADDR_ERRORS);
+    for (int i = 0; i < NSTATS; ++i) {
+        metric_mmap(mem_fd, i);
+    }
+}
 
-    // double ret = 1.0 * diff_write_nsec / diff_time;
-
-    old_time = now_time;
-    old_write_nsec = write_nsec;
-
-    // printf("%ld / %ld\n", write_nsec, diff_time);
-    memcpy(msg, &write_nsec, sizeof(write_nsec));
-    memcpy(msg + 8, cpu_stats, sizeof(cpu_stats));
+void unmap_metrics() {
+    for (int i = 0; i < NSTATS; ++i) {
+        metric_unmap(i);
+    }
 }
 
 int main() {
     struct sockaddr_in send_addr, recv_addr;
-    int send_sd, recv_sd, kmem_fd;
+    int send_sd, recv_sd;
     char msg[BUF_SIZE], buf[BUF_SIZE];
-    off_t diskstat_addr[NCPUS];
-    off_t stat_addr[NCPUS];
-
-    // struct sched_param param;
-    // int policy = SCHED_FIFO;
-    // param.sched_priority = sched_get_priority_max(policy);
-    // sched_setscheduler(0, policy, &param);
 
     memset(&send_addr, 0, sizeof(send_addr));
     send_addr.sin_family = AF_INET;
@@ -182,43 +136,38 @@ int main() {
         exit(1);
     }
 
-    kmem_fd = open(MEM_FILE, O_RDONLY);
-    if (kmem_fd < 0) {
+    int mem_fd = open(MEM_FILE, O_RDONLY);
+    if (mem_fd < 0) {
         perror("open" MEM_FILE);
         exit(1);
     }
-    read_addr(FILENAME_DISKSTATS_ADDR, diskstat_addr);
-    read_addr(FILENAME_STAT_ADDR, stat_addr);
-#ifdef USE_MMAP
-    init_mmaps(kmem_fd, diskstat_addr, diskstat_pages);
-    init_mmaps(kmem_fd, stat_addr, stat_pages);
-#endif
+
     int val = 1;
     ioctl(recv_sd, FIONBIO, &val);
 
+    init_metrics(mem_fd);
+
     while (1) {
-        message_gen(msg, kmem_fd, diskstat_addr, stat_addr);
         // wait for the request
         if (recv(recv_sd, buf, BUF_SIZE, 0) < 0) {
             if (errno == EAGAIN) continue;
             perror("recv");
             exit(1);
         }
+        message_gen();
         // double val;
         // memcpy(&val, msg, 8);
         //  printf("%lf\n", val);
         //  printf("received: %s\n", msg);
-        if (send(send_sd, msg, MSG_LEN, 0) < 0) {
+        if (send(send_sd, metric, sizeof(uint64_t) * NSTATS, 0) < 0) {
             perror("send");
             exit(1);
         }
     }
-#ifdef USE_MMAP
-    ummaps();
-#endif
+    unmap_metrics();
     close(recv_sd);
     close(send_sd);
-    close(kmem_fd);
+    close(mem_fd);
 
     return 0;
 }

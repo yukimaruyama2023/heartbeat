@@ -6,11 +6,15 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "monitor.h"
+
 #define BUF_SIZE 256
 #define DEST_ADDR "192.168.23.99"
 #define DEST_PORT 22222
 #define RECV_ADDR "192.168.23.99"
 #define RECV_PORT 22224
+
+uint64_t metric[NSTATS];
 
 int main(int argc, char **argv) {
     if (argc == 1) {
@@ -50,9 +54,8 @@ int main(int argc, char **argv) {
         perror("connect");
         exit(1);
     }
-    struct timespec send_time, recv_time, interval = {.tv_sec = 0, .tv_nsec = 5000000};
-    FILE *fp = fopen(argv[1], "w");
-    uint64_t val[11];
+    struct timespec send_time, recv_time, interval = {.tv_sec = 1, .tv_nsec = 0};
+    // FILE *fp = fopen(argv[1], "w");
     for (int i = 0; i < 10000; ++i) {
         nanosleep(&interval, NULL);
         timespec_get(&send_time, TIME_UTC);
@@ -61,14 +64,14 @@ int main(int argc, char **argv) {
             exit(1);
         }
 
-        if (recv(recv_sd, val, 88, 0) < 0) {
+        if (recv(recv_sd, metric, NSTATS * sizeof(uint64_t), 0) < 0) {
             perror("recv");
             exit(1);
         }
         timespec_get(&recv_time, TIME_UTC);
         printf("%ld.%ld,%09ld: ", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000000 + recv_time.tv_nsec - send_time.tv_nsec);
-        for (int i = 0; i < 11; ++i) {
-            printf("%ld ", val[i]);
+        for (int i = 0; i < NSTATS; ++i) {
+            printf("%ld ", metric[i]);
         }
         printf("\n");
 
@@ -77,7 +80,7 @@ int main(int argc, char **argv) {
 
     close(send_sd);
     close(recv_sd);
-    fclose(fp);
+    // fclose(fp);
 
     return 0;
 }
