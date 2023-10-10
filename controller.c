@@ -15,7 +15,7 @@
 #include "monitor.h"
 
 #define MEM_FILE "/dev/mem"
-#define DEST_ADDR "192.168.23.223"
+#define DEST_ADDR "192.168.23.210"
 #define DEST_PORT 22224
 #define RECV_ADDR "192.168.23.99"
 #define RECV_PORT 22222
@@ -23,6 +23,8 @@
 #define PERCPU_OFFSET 0x40000
 #define PAGE_SIZE 0x1000
 #define PAGE_MASK ~(PAGE_SIZE - 1)
+
+#define DEBUG(x) printf(#x ": %lx\n", x)
 
 void read_addr(const char *filename, off_t *addr) {
     FILE *fp = fopen(filename, "r");
@@ -37,7 +39,21 @@ uint64_t addr[NSTATS];
 void *mapped_addr[NSTATS][NCPUS];
 uint64_t metric[NSTATS];
 bool is_per_cpu[NSTATS] = {
-    [DISK_WRITE_NSEC] = true};
+    [DISK_WRITE_NSEC] = true,
+    [CPUTIME_USER] = true,
+    [CPUTIME_NICE] = true,
+    [CPUTIME_SYSTEM] = true,
+    [CPUTIME_SOFTIRQ] = true,
+    [CPUTIME_IRQ] = true,
+    [CPUTIME_IDLE] = true,
+    [CPUTIME_IOWAIT] = true,
+    [CPUTIME_STEAL] = true,
+    [CPUTIME_GUEST] = true,
+    [CPUTIME_GUEST_NICE] = true,
+    [NET_IP_IN_RECV] = true,
+    [NET_IP_IN_HDR_ERRORS] = true,
+    [NET_IP_ADDR_ERRORS] = true,
+};
 
 void read_metric(enum stat_id id) {
     if (!is_per_cpu[id]) {
@@ -59,11 +75,12 @@ void message_gen(void) {
 
 void metric_mmap(int mem_fd, enum stat_id id) {
     size_t size = is_per_cpu[id] ? NCPUS * PERCPU_OFFSET : PAGE_SIZE;
-    mapped_addr[id][0] = mmap(NULL, PAGE_SIZE, PROT_READ, MAP_PRIVATE, mem_fd, addr[id] & PAGE_MASK);
+    mapped_addr[id][0] = mmap(NULL, size, PROT_READ, MAP_PRIVATE, mem_fd, addr[id] & PAGE_MASK);
     if (mapped_addr[id][0] == (void *)-1) {
         perror("mmap");
         exit(1);
     }
+    DEBUG(mapped_addr[id][0]);
     mapped_addr[id][0] += addr[id] & ~PAGE_MASK;
     if (is_per_cpu[id]) {
         for (int i = 1; i < NCPUS; ++i) {
@@ -148,13 +165,13 @@ int main() {
     init_metrics(mem_fd);
 
     while (1) {
+        message_gen();
         // wait for the request
         if (recv(recv_sd, buf, BUF_SIZE, 0) < 0) {
             if (errno == EAGAIN) continue;
             perror("recv");
             exit(1);
         }
-        message_gen();
         // double val;
         // memcpy(&val, msg, 8);
         //  printf("%lf\n", val);

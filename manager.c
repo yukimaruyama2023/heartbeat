@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
     struct timespec send_time, recv_time, interval = {.tv_sec = 1, .tv_nsec = 0};
-    // FILE *fp = fopen(argv[1], "w");
+    FILE *fp = fopen(argv[1], "w");
     for (int i = 0; i < 10000; ++i) {
         nanosleep(&interval, NULL);
         timespec_get(&send_time, TIME_UTC);
@@ -69,18 +69,18 @@ int main(int argc, char **argv) {
             exit(1);
         }
         timespec_get(&recv_time, TIME_UTC);
-        printf("%ld.%ld,%09ld: ", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000000 + recv_time.tv_nsec - send_time.tv_nsec);
+        // printf("%ld.%ld,%09ld: ", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000000 + recv_time.tv_nsec - send_time.tv_nsec);
         for (int i = 0; i < NSTATS; ++i) {
             printf("%ld ", metric[i]);
         }
         printf("\n");
 
-        // fprintf(fp, "%ld.%09ld,%ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000 + recv_time.tv_nsec - send_time.tv_nsec, val);
+        fprintf(fp, "%ld.%09ld,%ld,%lu\n", send_time.tv_sec, send_time.tv_nsec, (recv_time.tv_sec - send_time.tv_sec) * 1000000000 + recv_time.tv_nsec - send_time.tv_nsec, metric[DISK_WRITE_NSEC]);
     }
 
     close(send_sd);
     close(recv_sd);
-    // fclose(fp);
+    fclose(fp);
 
     return 0;
 }
