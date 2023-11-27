@@ -26,16 +26,8 @@
 
 #define DEBUG(x) printf(#x ": %lx\n", x)
 
-void read_addr(const char *filename, off_t *addr) {
-    FILE *fp = fopen(filename, "r");
-    for (int i = 0; i < NCPUS; ++i) {
-        fscanf(fp, "%lx", &addr[i]);
-    }
-    fclose(fp);
-}
-
 uint64_t statistics[NSTATS];
-uint64_t addr[NSTATS];
+uint64_t addr[NSTATS][NCPUS];
 void *mapped_addr[NSTATS][NCPUS];
 uint64_t metric[NSTATS];
 bool is_per_cpu[NSTATS] = {
@@ -70,34 +62,38 @@ void read_metric(enum stat_id id) {
 void message_gen(void) {
     for (int i = 0; i < NSTATS; ++i) {
         read_metric(i);
+        // printf("%ld\n", metric[i]);
     }
+    // printf("\n");
 }
 
 void metric_mmap(int mem_fd, enum stat_id id) {
-    size_t size = is_per_cpu[id] ? NCPUS * PERCPU_OFFSET : PAGE_SIZE;
-    mapped_addr[id][0] = mmap(NULL, size, PROT_READ, MAP_PRIVATE, mem_fd, addr[id] & PAGE_MASK);
-    if (mapped_addr[id][0] == (void *)-1) {
-        perror("mmap");
-        exit(1);
-    }
-    DEBUG(mapped_addr[id][0]);
-    mapped_addr[id][0] += addr[id] & ~PAGE_MASK;
-    if (is_per_cpu[id]) {
-        for (int i = 1; i < NCPUS; ++i) {
-            mapped_addr[id][i] = mapped_addr[id][0] + i * PERCPU_OFFSET;
+    for (int i = 0; i < (is_per_cpu[id] ? NCPUS : 1); ++i) {
+        mapped_addr[id][i] = mmap(NULL, PAGE_SIZE, PROT_READ, MAP_PRIVATE, mem_fd, addr[id][i] & PAGE_MASK);
+        if (mapped_addr[id][i] == (void *)-1) {
+            perror("mmap");
+            exit(1);
         }
+        mapped_addr[id][i] += addr[id][i] & ~PAGE_MASK;
     }
 }
 
 void metric_unmap(enum stat_id id) {
-    size_t size = is_per_cpu[id] ? NCPUS * PERCPU_OFFSET : PAGE_SIZE;
-    munmap((uint64_t)mapped_addr[id][0] & PAGE_MASK, size);
+    for (int i = 0; i < (is_per_cpu[id] ? NCPUS : 1); ++i) {
+        munmap((uint64_t)mapped_addr[id][i] & PAGE_MASK, PAGE_SIZE);
+    }
 }
 
 void read_addr_from_file(char *filename, enum stat_id first_id, enum stat_id last_id) {
     FILE *fp = fopen(filename, "r");
     for (int id = first_id; id <= last_id; ++id) {
-        fscanf(fp, "%lx", &addr[id]);
+        if (!is_per_cpu[id]) {
+            fscanf(fp, "%lx", &addr[id][0]);
+        } else {
+            for (int cpu = 0; cpu < NCPUS; ++cpu) {
+                fscanf(fp, "%lx", &addr[id][cpu]);
+            }
+        }
     }
     fclose(fp);
 }
@@ -105,7 +101,7 @@ void read_addr_from_file(char *filename, enum stat_id first_id, enum stat_id las
 void init_metrics(int mem_fd) {
     read_addr_from_file("addr_diskstat.txt", DISK_WRITE_NSEC, DISK_WRITE_NSEC);
     read_addr_from_file("addr_cpustat.txt", CPUTIME_USER, CPUTIME_GUEST_NICE);
-    read_addr_from_file("addr_memstat.txt", MEM_USAGE, MEM_USAGE);
+    read_addr_from_file("addr_memstat.txt", MEM_FREE_PAGE, MEM_FREE_PAGE);
     read_addr_from_file("addr_netstat.txt", NET_IP_IN_RECV, NET_IP_ADDR_ERRORS);
     for (int i = 0; i < NSTATS; ++i) {
         metric_mmap(mem_fd, i);
