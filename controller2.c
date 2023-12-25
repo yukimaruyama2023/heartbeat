@@ -158,14 +158,7 @@ void read_metric() {
 }
 
 void message_gen(void) {
-    while (1) {
-        read_metric();
-        for (int i = DISK_WRITE_NSEC; i < NSTATS; ++i) {
-            printf("%ld ", metric[i]);
-        }
-        puts("");
-        sleep(1);
-    }
+    read_metric();
 }
 
 int main() {
