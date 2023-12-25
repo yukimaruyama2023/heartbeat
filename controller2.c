@@ -199,19 +199,15 @@ int main() {
     int val = 1;
     ioctl(recv_sd, FIONBIO, &val);
     open_procfiles();
-    message_gen();
 
     while (1) {
+        message_gen();
         // wait for the request
         if (recv(recv_sd, buf, BUF_SIZE, 0) < 0) {
             if (errno == EAGAIN) continue;
             perror("recv");
             exit(1);
         }
-        // double val;
-        // memcpy(&val, msg, 8);
-        //  printf("%lf\n", val);
-        //  printf("received: %s\n", msg);
         if (send(send_sd, metric, sizeof(uint64_t) * NSTATS, 0) < 0) {
             perror("send");
             exit(1);
