@@ -9,10 +9,11 @@
 #include "monitor.h"
 
 #define BUF_SIZE 256
-#define DEST_ADDR "192.168.23.99"
+#define DEST_ADDR "192.168.99.37"
 #define DEST_PORT 22222
-#define RECV_ADDR "192.168.23.210"
+#define RECV_ADDR "192.168.99.38"
 #define RECV_PORT 22224
+#define INTERVAL 0.01 // modified. The unit is second
 
 uint64_t metric[NSTATS];
 uint64_t old_metric[NSTATS];
@@ -59,7 +60,7 @@ int main(int argc, char **argv) {
         perror("connect");
         exit(1);
     }
-    struct timespec send_time, recv_time, interval = {.tv_sec = 0, .tv_nsec = 5000000};
+    struct timespec send_time, recv_time, interval = {.tv_sec = 0, .tv_nsec = INTERVAL * 1000000000}; // modified
     struct tm *time;
     FILE *fp = fopen(argv[1], "w");
     if (send(send_sd, "Hello", 6, 0) < 0) {
@@ -71,7 +72,7 @@ int main(int argc, char **argv) {
         perror("recv");
         exit(1);
     }
-    for (int i = 0; i < 12000; ++i) {
+    for (int i = 0; i < 12; ++i) {
         nanosleep(&interval, NULL);
         timespec_get(&send_time, TIME_UTC);
         if (send(send_sd, "Hello", 6, 0) < 0) {
@@ -91,20 +92,20 @@ int main(int argc, char **argv) {
         // }
         // printf("\n");
         fprintf(fp, "%d/%02d/%02d-%02d:%02d:%02d.%ld,", time->tm_year + 1900, time->tm_mon + 1, time->tm_mday, time->tm_hour, time->tm_min, time->tm_sec, recv_time.tv_nsec / 1000);
-        fprintf(fp, "%ld.%09ld,%ld,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", send_time.tv_sec, send_time.tv_nsec,
-                (recv_time.tv_sec - send_time.tv_sec) * 1000000000L + recv_time.tv_nsec - send_time.tv_nsec,
-                metric_diff(DISK_WRITE_NSEC),
+        fprintf(fp, "%ld.%09ld,%ld,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n", send_time.tv_sec, send_time.tv_nsec,
+                (recv_time.tv_sec - send_time.tv_sec) * 1000000L + (recv_time.tv_nsec - send_time.tv_nsec) / 1000L,
+                /* metric_diff(DISK_WRITE_NSEC), */
                 metric_diff(CPUTIME_USER),
                 metric_diff(CPUTIME_NICE),
                 metric_diff(CPUTIME_SYSTEM),
-                metric_diff(CPUTIME_SOFTIRQ),
-                metric_diff(CPUTIME_IRQ),
                 metric_diff(CPUTIME_IDLE),
                 metric_diff(CPUTIME_IOWAIT),
+                metric_diff(CPUTIME_IRQ),
+                metric_diff(CPUTIME_SOFTIRQ),
                 metric_diff(CPUTIME_STEAL),
                 metric_diff(CPUTIME_GUEST),
-                metric_diff(CPUTIME_GUEST_NICE),
-                metric[MEM_FREE_PAGE]);
+                metric_diff(CPUTIME_GUEST_NICE));
+                /* metric[MEM_FREE_PAGE]); */
         memcpy(old_metric, metric, sizeof(uint64_t) * NSTATS);
     }
 

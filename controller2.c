@@ -15,9 +15,9 @@
 #include "monitor.h"
 
 #define MEM_FILE "/dev/mem"
-#define DEST_ADDR "192.168.23.210"
+#define DEST_ADDR "192.168.99.38"
 #define DEST_PORT 22224
-#define RECV_ADDR "192.168.23.99"
+#define RECV_ADDR "192.168.99.37"
 #define RECV_PORT 22222
 #define NCPUS 6
 #define PERCPU_OFFSET 0x40000
@@ -27,81 +27,82 @@
 
 #define DEBUG(x) printf(#x ": %lx\n", x)
 
-int fd_diskstat, fd_stat, fd_meminfo, fd_net;
+/* int fd_diskstat, fd_stat, fd_meminfo, fd_net; */
+int fd_stat;
 
 uint64_t statistics[NSTATS];
 uint64_t addr[NSTATS][NCPUS];
 void *mapped_addr[NSTATS][NCPUS];
 uint64_t metric[NSTATS];
 bool is_per_cpu[NSTATS] = {
-    [DISK_WRITE_NSEC] = true,
+    /* [DISK_WRITE_NSEC] = true, */
     [CPUTIME_USER] = true,
     [CPUTIME_NICE] = true,
     [CPUTIME_SYSTEM] = true,
-    [CPUTIME_SOFTIRQ] = true,
-    [CPUTIME_IRQ] = true,
     [CPUTIME_IDLE] = true,
     [CPUTIME_IOWAIT] = true,
+    [CPUTIME_IRQ] = true,
+    [CPUTIME_SOFTIRQ] = true,
     [CPUTIME_STEAL] = true,
     [CPUTIME_GUEST] = true,
     [CPUTIME_GUEST_NICE] = true,
-    [NET_IP_IN_RECV] = true,
-    [NET_IP_IN_HDR_ERRORS] = true,
-    [NET_IP_ADDR_ERRORS] = true,
+    /* [NET_IP_IN_RECV] = true, */
+    /* [NET_IP_IN_HDR_ERRORS] = true, */
+    /* [NET_IP_ADDR_ERRORS] = true, */
 };
 
 void open_procfiles() {
-    fd_diskstat = open("/proc/diskstats", O_RDONLY);
-    // fd_diskstat = open("dkstat.txt", O_RDONLY);
-    if (fd_diskstat < 0) {
-        perror("open diskstat:");
-        exit(1);
-    }
+    /* fd_diskstat = open("/proc/diskstats", O_RDONLY); */
+    /* // fd_diskstat = open("dkstat.txt", O_RDONLY); */
+    /* if (fd_diskstat < 0) { */
+    /*     perror("open diskstat:"); */
+    /*     exit(1); */
+    /* } */
     fd_stat = open("/proc/stat", O_RDONLY);
     if (fd_stat < 0) {
         perror("open stat:");
         exit(1);
     }
-    fd_meminfo = open("/proc/meminfo", O_RDONLY);
-    if (fd_meminfo < 0) {
-        perror("open meminfo:");
-        exit(1);
-    }
-    fd_net = open("/proc/net/snmp", O_RDONLY);
-    if (fd_net < 0) {
-        perror("open net/snmp:");
-        exit(1);
-    }
+    /* fd_meminfo = open("/proc/meminfo", O_RDONLY); */
+    /* if (fd_meminfo < 0) { */
+    /*     perror("open meminfo:"); */
+    /*     exit(1); */
+    /* } */
+    /* fd_net = open("/proc/net/snmp", O_RDONLY); */
+    /* if (fd_net < 0) { */
+    /*     perror("open net/snmp:"); */
+    /*     exit(1); */
+    /* } */
 }
 
-void read_diskstat() {
-    lseek(fd_diskstat, 0, SEEK_SET);
-    char buf[READ_BUF_SIZE];
-    read(fd_diskstat, buf, READ_BUF_SIZE);
-    int line = 1, pos = 0;
-    // seek to sda metrics line
-    while (line != 19) {
-        if (buf[pos++] == '\n') line++;
-        // printf("%d\n", line);
-    }
-    // seek to line 19:   8  0   sda
-    //                              ^
-    while (buf[pos++] != 'a')
-        ;
-    // putchar(buf[pos]);
+/* void read_diskstat() { */
+/*     lseek(fd_diskstat, 0, SEEK_SET); */
+/*     char buf[READ_BUF_SIZE]; */
+/*     read(fd_diskstat, buf, READ_BUF_SIZE); */
+/*     int line = 1, pos = 0; */
+/*     // seek to sda metrics line */
+/*     while (line != 19) { */
+/*         if (buf[pos++] == '\n') line++; */
+/*         // printf("%d\n", line); */
+/*     } */
+/*     // seek to line 19:   8  0   sda */
+/*     //                              ^ */
+/*     while (buf[pos++] != 'a') */
+/*         ; */
+/*     // putchar(buf[pos]); */
 
-    int word_count = 0;
-    // skip 8 - 1 words (= metrics)
-    while (word_count != 8) {
-        if (buf[pos++] == ' ') word_count++;
-    }
-    // read metric with atol
-    char *begin_write_nsec = &buf[pos];
-    while (buf[++pos] != ' ')
-        ;
-    buf[pos] = '\0';
-    metric[DISK_WRITE_NSEC] = atol(begin_write_nsec);
-}
+/*     int word_count = 0; */
+/*     // skip 8 - 1 words (= metrics) */
+/*     while (word_count != 8) { */
+/*         if (buf[pos++] == ' ') word_count++; */
+/*     } */
+/*     // read metric with atol */
+/*     char *begin_write_nsec = &buf[pos]; */
+/*     while (buf[++pos] != ' ') */
+/*         ; */
+/*     buf[pos] = '\0'; */
+/*     metric[DISK_WRITE_NSEC] = atol(begin_write_nsec); */
+/* } */
 
 void read_stat() {
     lseek(fd_stat, 5, SEEK_SET);
@@ -117,44 +118,44 @@ void read_stat() {
     }
 }
 
-void read_meminfo() {
-    lseek(fd_meminfo, 9, SEEK_SET);
-    char buf[READ_BUF_SIZE];
-    read(fd_meminfo, buf, READ_BUF_SIZE);
-    int pos = 0;
-    // skip 1st line
-    while (buf[pos++] != '\n')
-        ;
-    // skip Memfree:
-    pos += 7;
-    while (buf[++pos] == ' ')
-        ;
-    char *met = &buf[pos];
-    while (buf[++pos] != ' ')
-        ;
-    buf[pos] = '\0';
-    metric[MEM_FREE_PAGE] = atol(met);
-}
+/* void read_meminfo() { */
+/*     lseek(fd_meminfo, 9, SEEK_SET); */
+/*     char buf[READ_BUF_SIZE]; */
+/*     read(fd_meminfo, buf, READ_BUF_SIZE); */
+/*     int pos = 0; */
+/*     // skip 1st line */
+/*     while (buf[pos++] != '\n') */
+/*         ; */
+/*     // skip Memfree: */
+/*     pos += 7; */
+/*     while (buf[++pos] == ' ') */
+/*         ; */
+/*     char *met = &buf[pos]; */
+/*     while (buf[++pos] != ' ') */
+/*         ; */
+/*     buf[pos] = '\0'; */
+/*     metric[MEM_FREE_PAGE] = atol(met); */
+/* } */
 
-void read_net() {
-    lseek(fd_net, 232, SEEK_SET);
-    char buf[READ_BUF_SIZE];
-    read(fd_net, buf, READ_BUF_SIZE);
-    int pos = 0;
-    for (int i = NET_IP_IN_RECV; i <= NET_IP_ADDR_ERRORS; ++i) {
-        char *begin_metric = &buf[pos];
-        while (buf[++pos] != ' ' && buf[pos] != '\n')
-            ;
-        buf[pos++] = '\0';
-        metric[i] = atol(begin_metric);
-    }
-}
+/* void read_net() { */
+/*     lseek(fd_net, 232, SEEK_SET); */
+/*     char buf[READ_BUF_SIZE]; */
+/*     read(fd_net, buf, READ_BUF_SIZE); */
+/*     int pos = 0; */
+/*     for (int i = NET_IP_IN_RECV; i <= NET_IP_ADDR_ERRORS; ++i) { */
+/*         char *begin_metric = &buf[pos]; */
+/*         while (buf[++pos] != ' ' && buf[pos] != '\n') */
+/*             ; */
+/*         buf[pos++] = '\0'; */
+/*         metric[i] = atol(begin_metric); */
+/*     } */
+/* } */
 
 void read_metric() {
-    read_diskstat();
+    /* read_diskstat(); */
     read_stat();
-    read_meminfo();
-    read_net();
+    /* read_meminfo(); */
+    /* read_net(); */
 }
 
 void message_gen(void) {
