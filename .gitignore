@@ -2,3 +2,4 @@
 result*.csv
 address.txt
 *.txt
+*.o

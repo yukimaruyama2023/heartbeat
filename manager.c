@@ -13,7 +13,10 @@
 #define DEST_PORT 22222
 #define RECV_ADDR "192.168.99.38"
 #define RECV_PORT 22224
-#define INTERVAL 0.01 // modified. The unit is second
+/* #define INTERVAL 0.0165 // modified. The unit is second */
+/* #define INTERVAL 0.014 // modified. The unit is second */
+/* #define INTERVAL 0.0153 // modified. The unit is second */
+#define INTERVAL 0.0158 // modified. The unit is second
 
 uint64_t metric[NSTATS];
 uint64_t old_metric[NSTATS];
@@ -72,14 +75,14 @@ int main(int argc, char **argv) {
         perror("recv");
         exit(1);
     }
-    for (int i = 0; i < 12; ++i) {
+    for (int i = 0; i < 12000; ++i) {
         nanosleep(&interval, NULL);
-        timespec_get(&send_time, TIME_UTC);
         if (send(send_sd, "Hello", 6, 0) < 0) {
             perror("send");
             exit(1);
         }
 
+        timespec_get(&send_time, TIME_UTC);
         if (recv(recv_sd, metric, NSTATS * sizeof(uint64_t), 0) < 0) {
             perror("recv");
             exit(1);
