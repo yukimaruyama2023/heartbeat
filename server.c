@@ -15,9 +15,9 @@
 #include "monitor.h"
 
 #define MEM_FILE "/dev/mem"
-#define DEST_ADDR "192.168.99.38"
+#define DEST_ADDR "192.168.23.99"
 #define DEST_PORT 22222
-#define RECV_ADDR "192.168.99.37"
+#define RECV_ADDR "192.168.23.50"
 #define RECV_PORT 22222
 #define NCPUS 6
 #define PERCPU_OFFSET 0x40000
@@ -66,14 +66,14 @@ int main() {
     }
 
     char *hello = "Hello from server";
-    char buffer[MAXLINE];
+    long buffer[10];
     int n;
-    if (n = recv(recv_sd, (char *)buffer, MAXLINE, 0) < 0) {
+    if (n = recv(recv_sd, buffer, sizeof(buffer), 0) < 0) {
         perror("recv");
         exit(1);
     }
     puts("Message recieved");
-    send(send_sd, (const char *)hello, strlen(hello), 0);
+    send(send_sd, buffer, sizeof(buffer), 0);
     puts("Hello message sent");
     close(recv_sd);
     close(send_sd);

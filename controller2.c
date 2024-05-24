@@ -16,7 +16,7 @@
 
 #define MEM_FILE "/dev/mem"
 #define DEST_ADDR "192.168.23.99"
-#define DEST_PORT 22224
+#define DEST_PORT 22222
 #define RECV_ADDR "192.168.23.50"
 #define RECV_PORT 22222
 #define NCPUS 6
@@ -213,7 +213,6 @@ int main() {
             perror("send");
             exit(1);
         }
-        puts("recv and send cycled");
     }
     close(recv_sd);
     close(send_sd);

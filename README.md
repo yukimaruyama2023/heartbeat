@@ -13,3 +13,10 @@ Smart NIC上で動くプログラム。Controllerから情報をもらい、Hear
 ## Controller
 
 監視される先で動かすプログラム。カーネル内部を覗き、Subsystemに情報をあげる。
+
+## 実行
+サーバは，
+./controller2
+を実行する．
+
+
